@@ -1,0 +1,15 @@
+{
+  "info": { "name": "Srinidhi Constructions API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "variable": [{"key":"baseUrl","value":"http://localhost:8000/api/index.php"}],
+  "item": [
+    {"name":"Public projects","request":{"method":"GET","url":"{{baseUrl}}/projects"}},
+    {"name":"Public services","request":{"method":"GET","url":"{{baseUrl}}/services"}},
+    {"name":"Submit enquiry","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"name\":\"Test Visitor\",\"email\":\"visitor@example.com\",\"phone\":\"+918000000000\",\"message\":\"Please contact me about a home project.\"}"},"url":"{{baseUrl}}/enquiries"}},
+    {"name":"Admin login","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"email\":\"admin@example.com\",\"password\":\"replace-with-local-password\"}"},"url":"{{baseUrl}}/login"}},
+    {"name":"Dashboard (auth)","request":{"method":"GET","url":"{{baseUrl}}/dashboard"}},
+    {"name":"Admin enquiries (auth)","request":{"method":"GET","url":"{{baseUrl}}/enquiries"}},
+    {"name":"Close enquiry (auth)","request":{"method":"PUT","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"status\":\"Closed\"}"},"url":"{{baseUrl}}/enquiries/1"}},
+    {"name":"Delete project (auth)","request":{"method":"DELETE","url":"{{baseUrl}}/projects/1"}},
+    {"name":"Logout","request":{"method":"POST","url":"{{baseUrl}}/logout"}}
+  ]
+}
