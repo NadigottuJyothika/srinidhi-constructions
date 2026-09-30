@@ -8,16 +8,20 @@ import {
   Building2,
   Check,
   House,
+  LogOut,
   Menu,
   PencilRuler,
   RefreshCw,
   X,
 } from 'lucide-react'
 import Admin from './Admin'
+import CustomerAuth from './CustomerAuth'
+import { fallbackProjects, fallbackServices } from './fallbackContent'
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/index.php').replace(/\/+$/, '')
 
 const serviceIcons = [House, Building2, PencilRuler, RefreshCw]
+const featuredProjectTitles = fallbackProjects.slice(0, 6).map(project => project.title)
 
 function Reveal({ children, className = '', delay = 0 }) {
   const reduceMotion = useReducedMotion()
@@ -41,42 +45,65 @@ function App() {
 }
 
 function PublicSite() {
-  const reduceMotion = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const [projects, setProjects] = useState([])
   const [services, setServices] = useState([])
-  const [projectsError, setProjectsError] = useState('')
-  const [servicesError, setServicesError] = useState('')
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [servicesLoading, setServicesLoading] = useState(true)
-  const [showAllProjects, setShowAllProjects] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [enquiryError, setEnquiryError] = useState('')
+  const [customer, setCustomer] = useState(null)
+  const [customerLoading, setCustomerLoading] = useState(true)
+  const [customerCsrf, setCustomerCsrf] = useState('')
+  const [authMode, setAuthMode] = useState(null)
+  const [authNotice, setAuthNotice] = useState('')
 
   useEffect(() => {
-    const loadCollection = async (resource, setItems, setError, setLoading) => {
+    const loadCollection = async (resource, setItems, fallbackItems, setLoading) => {
       try {
         const response = await fetch(`${API}/${resource}`)
         const result = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(result.error || `Unable to load ${resource}.`)
         if (!Array.isArray(result.data)) throw new Error(`The ${resource} response was not valid.`)
-        setItems(result.data)
+        if (resource === 'projects') {
+          const projectsByTitle = new Map(result.data.map(project => [project.title, project]))
+          setItems(featuredProjectTitles.map((title, index) => projectsByTitle.get(title) || fallbackProjects[index]))
+        } else {
+          setItems(result.data)
+        }
       } catch (error) {
-        setError(error.message || `Unable to load ${resource}.`)
+        setItems(resource === 'projects' ? fallbackItems.slice(0, 6) : fallbackItems)
       } finally {
         setLoading(false)
       }
     }
 
-    loadCollection('projects', setProjects, setProjectsError, setProjectsLoading)
-    loadCollection('services', setServices, setServicesError, setServicesLoading)
+    loadCollection('projects', setProjects, fallbackProjects, setProjectsLoading)
+    loadCollection('services', setServices, fallbackServices, setServicesLoading)
   }, [])
 
-  const scrollTo = (id) => {
-    setMenuOpen(false)
-    document.getElementById(id)?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' })
-  }
+  useEffect(() => {
+    let active = true
+    const restoreCustomer = async () => {
+      try {
+        const csrfResponse = await fetch(`${API}/customers/csrf`, { credentials: 'include' })
+        const csrfResult = await csrfResponse.json().catch(() => ({}))
+        if (!csrfResponse.ok || !csrfResult.data?.csrfToken) throw new Error('Unable to start a secure customer session.')
+        if (active) setCustomerCsrf(csrfResult.data.csrfToken)
+
+        const response = await fetch(`${API}/customers/me`, { credentials: 'include' })
+        const result = await response.json().catch(() => ({}))
+        if (active && response.ok && result.data?.customer) setCustomer(result.data.customer)
+      } catch {
+        if (active) setCustomer(null)
+      } finally {
+        if (active) setCustomerLoading(false)
+      }
+    }
+    restoreCustomer()
+    return () => { active = false }
+  }, [])
 
   const submitEnquiry = async (event) => {
     event.preventDefault()
@@ -103,7 +130,21 @@ function PublicSite() {
     }
   }
 
-  const visibleProjects = showAllProjects ? projects : projects.slice(0, 3)
+  const visibleProjects = projects.slice(0, 6)
+
+  const signOutCustomer = async () => {
+    try {
+      const response = await fetch(`${API}/customers/logout`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': customerCsrf } })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'Unable to sign out. Please try again.')
+      setCustomer(null)
+      setCustomerCsrf(result.data?.csrfToken || '')
+      setAuthNotice('')
+    } catch (error) {
+      setAuthNotice(error.message || 'Unable to sign out. Please try again.')
+      setAuthMode('sign-in')
+    }
+  }
 
   return (
     <div className="site-shell">
@@ -119,6 +160,11 @@ function PublicSite() {
           <a href="#about-story" onClick={() => setMenuOpen(false)}>About</a>
           <a href="#contact" onClick={() => setMenuOpen(false)}>Contact</a>
           <a className="nav-contact" href="#contact" onClick={() => setMenuOpen(false)}>Get in touch <ArrowUpRight size={14} /></a>
+          {!customerLoading && (customer ? (
+            <div className="nav-customer-actions"><span className="nav-customer-name" title={customer.name}>Hi, {customer.name.split(' ')[0]}</span><button type="button" onClick={signOutCustomer}><LogOut size={13} /> Sign out</button></div>
+          ) : (
+            <div className="nav-auth-actions"><button type="button" onClick={() => { setMenuOpen(false); setAuthNotice(''); setAuthMode('sign-in') }}>Sign In</button><button className="nav-sign-up" type="button" onClick={() => { setMenuOpen(false); setAuthNotice(''); setAuthMode('sign-up') }}>Sign Up</button></div>
+          ))}
         </nav>
         <button
           className="menu-toggle"
@@ -144,7 +190,7 @@ function PublicSite() {
           <div className="hero-content">
             <Reveal>
               <p className="eyebrow hero-eyebrow"><span /> Architecture · Design · Construction</p>
-              <h1 id="hero-heading">Spaces designed<br />to inspire. <i>Built to last.</i></h1>
+              <h1 id="hero-heading"><span className="hero-title-main">Spaces designed<br />to inspire.</span><span className="hero-title-note">Built to last.</span></h1>
               <p className="hero-intro">Srinidhi Constructions brings thoughtful planning and considered craft to the places where life unfolds.</p>
               <div className="hero-actions">
                 <a className="button button-light" href="#projects">Explore our projects <ArrowRight size={16} /></a>
@@ -174,16 +220,14 @@ function PublicSite() {
             <div><p className="eyebrow"><span /> Selected work</p><h2 id="projects-heading">Built with <i>intention.</i></h2></div>
             <p className="section-note">A selection of projects shaped by place, purpose, and the people who call them their own.</p>
           </Reveal>
-          {projectsError ? (
-            <div className="data-message" role="status">{projectsError}</div>
-          ) : projectsLoading ? (
+          {projectsLoading ? (
             <div className="data-message" role="status">Loading projects...</div>
           ) : projects.length === 0 ? (
             <div className="data-message" role="status">No projects are available at the moment.</div>
           ) : (
             <div className="project-grid" id="project-list">
               {visibleProjects.map((project, index) => (
-                <Reveal className={`project-card${index === 0 ? ' project-featured' : ''}`} key={project.id} delay={index % 2 ? 0.08 : 0}>
+                  <Reveal className="project-card" key={project.id ?? project.slug ?? project.title} delay={index % 2 ? 0.08 : 0}>
                   <a className="project-link" href="#contact" aria-label={`Discuss a project like ${project.title}`}>
                     <div className="project-image">
                       {project.cover_image && <img src={project.cover_image} alt={`${project.title}, ${project.category} project`} loading="lazy" />}
@@ -191,20 +235,13 @@ function PublicSite() {
                       <span className="project-image-arrow"><ArrowUpRight size={18} /></span>
                     </div>
                     <div className="project-details">
-                      <div><p className="project-category">{project.category}{project.description?.startsWith('Illustrative') ? '' : project.status ? ` / ${project.status}` : ''}</p><h3>{project.title}</h3>{project.description?.startsWith('Illustrative') && <span className="project-demo-label">Illustrative concept · not a verified commission</span>}</div>
+                      <div className="project-meta"><p className="project-category">{project.category}</p><h3>{project.title}</h3><span className="project-concept-label">Illustrative concept</span></div>
                       <span className="project-location">{project.location}</span>
                     </div>
-                    {project.description && <p className="project-description">{project.description}</p>}
+                    {project.description && <p className="project-description">{project.description.replace(/^Illustrative (?:sample seed record; not a verified completed Srinidhi Constructions commission|demo only; not a completed or commissioned Srinidhi Constructions project)\.\s*/i, '')}</p>}
                   </a>
                 </Reveal>
               ))}
-            </div>
-          )}
-          {!projectsError && !projectsLoading && projects.length > 0 && (
-            <div className="section-action">
-              <button className="button button-outline" type="button" onClick={() => projects.length > 3 ? setShowAllProjects(!showAllProjects) : scrollTo('project-list')}>
-                {projects.length > 3 && showAllProjects ? 'Show featured projects' : 'View all projects'} <ArrowUpRight size={15} />
-              </button>
             </div>
           )}
         </section>
@@ -215,9 +252,7 @@ function PublicSite() {
               <div><p className="eyebrow"><span /> What we do</p><h2 id="services-heading">From first line<br />to <i>final finish.</i></h2></div>
               <p>Considered work, from the earliest plan through to the last detail.</p>
             </Reveal>
-            {servicesError ? (
-              <div className="data-message data-message-dark" role="status">{servicesError}</div>
-            ) : servicesLoading ? (
+            {servicesLoading ? (
               <div className="data-message data-message-dark" role="status">Loading services...</div>
             ) : services.length === 0 ? (
               <div className="data-message data-message-dark" role="status">No services are available at the moment.</div>
@@ -310,6 +345,9 @@ function PublicSite() {
       </footer>
       <AnimatePresence>
         {menuOpen && <motion.div className="mobile-nav-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {authMode && <CustomerAuth mode={authMode} csrfToken={customerCsrf} initialMessage={authNotice} onClose={() => { setAuthMode(null); setAuthNotice('') }} onModeChange={setAuthMode} onAuthenticated={(nextCustomer, nextCsrf) => { setCustomer(nextCustomer); setCustomerCsrf(nextCsrf); setAuthMode(null); setAuthNotice('') }} />}
       </AnimatePresence>
     </div>
   )

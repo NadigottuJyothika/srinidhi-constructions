@@ -10,7 +10,7 @@ Node.js 20+, npm, PHP 8.1+ with PDO MySQL enabled, and MySQL 8+. Apache or PHP's
 
 1. Create the database and original tables/content: `mysql -u root -p < database/schema.sql`.
 2. Add the repeat-safe illustrative portfolio and service-scope content: `mysql -u root -p srinidhi_constructions < database/content_seed.sql`. Existing project and service rows are preserved; added rows are skipped on repeat runs.
-3. Configure the PHP host environment from `api/.env.example`: `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, `FRONTEND_ORIGIN`, and `SESSION_SECURE`. Do not commit environment files or credentials.
+3. For an existing database, add customer auth without touching current tables: `mysql -u root -p srinidhi_constructions < database/customer_auth_migration.sql`. A fresh import of `database/schema.sql` also creates the `customers` table. Configure the PHP host environment from `api/.env.example`: `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, `FRONTEND_ORIGINS`, `SESSION_SECURE`, and `SESSION_SAMESITE`. Do not commit environment files or credentials.
 4. Start the API from the project root: `php -S localhost:8000 -t .`. Its base URL is `http://localhost:8000/api/index.php`.
 5. Install and run the frontend: `npm install`, then `npm run dev`. Set `VITE_API_URL` if the API base URL differs from the default.
 6. Visit `/admin` for the protected dashboard. Public pages are served from the Vite fallback route.
@@ -44,7 +44,8 @@ For a fresh database that has no administrator, enter two `SecureString` prompts
 
 - `src/`: React public experience and admin console
 - `api/index.php`: JSON API, PDO access, sessions, validation, and centralized errors
-- `database/schema.sql`: normalized tables and clearly identified sample content
+- `database/schema.sql`: normalized tables, customer accounts, and clearly identified sample content
+- `database/customer_auth_migration.sql`: additive customer table migration for an existing database
 - `postman/`: importable API collection
 - `public/`: robots.txt and sitemap.xml
 
@@ -52,8 +53,8 @@ The original project rows are illustrative database seed records, not verified c
 
 ## API notes
 
-Public `GET /projects`, `GET /services`, and `POST /enquiries` are available without authentication. Login, logout, dashboard, admin list reads, project/service create-update-delete, enquiry status updates, and enquiry deletion require the PHP session cookie. Passwords are hashed with `password_hash`; IDs and submitted values use prepared statements. Use HTTPS in production and set `SESSION_SECURE=true`.
+Public `GET /projects`, `GET /services`, and `POST /enquiries` are available without authentication. Customer auth uses `GET /customers/csrf`, `POST /customers/register`, `POST /customers/login`, `GET /customers/me`, and `POST /customers/logout`. Customer sessions use the separate `SRINIDHI_CUSTOMER` cookie; admin authentication continues to use its existing session. Mutating customer auth requests require the CSRF token returned by the CSRF endpoint. Passwords are hashed with `password_hash()` and verified with `password_verify()`; customer fields use prepared statements. For a Vercel frontend, set `FRONTEND_ORIGINS` to the exact comma-separated production/preview origins you intend to permit, and deploy the API over HTTPS with `SESSION_SECURE=true` and `SESSION_SAMESITE=None`. Credentialed cross-site cookies require HTTPS and exact CORS origins; browsers may block cookies if the API is hosted on an unrelated third-party site, so a same-site API domain or Vercel proxy is recommended.
 
 ## Testing
 
-Run `npm run build` for the production frontend check. Import the Postman collection and set its `baseUrl`. Verify projects/services load from MySQL, management CRUD operations, enquiry submission and status changes, and unauthorized dashboard access. The local database currently includes eight illustrative project concepts and seven illustrative service scopes in addition to the original rows; the supplemental seed can be re-run without duplicating them.
+Run `npm run build` for the production frontend check. Import the Postman collection and set its `baseUrl`; use the Customer authentication folder to exercise CSRF bootstrap, registration, login, current-user, and logout routes. Verify projects/services load from MySQL, management CRUD operations, enquiry submission and status changes, and unauthorized dashboard access. The local database currently includes eight illustrative project concepts and seven illustrative service scopes in addition to the original rows; the supplemental seed can be re-run without duplicating them.
